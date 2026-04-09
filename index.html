@@ -130,7 +130,8 @@
     }
     .app-header {
       background: var(--green); color: var(--white);
-      padding: 16px 20px 14px;
+      padding: 14px 20px 14px;
+      padding-top: calc(env(safe-area-inset-top) + 14px);
       display: flex; align-items: center; justify-content: space-between;
       position: sticky; top: 0; z-index: 10;
     }
@@ -397,6 +398,25 @@
     .delete-btn:hover, .delete-btn:focus { color: #B91C1C; background: #FEE2E2; }
     .delete-btn.confirm { color: #B91C1C; background: #FEE2E2; }
 
+    /* ── TOAST ───────────────────────────────── */
+    .toast {
+      position: fixed; bottom: calc(90px + env(safe-area-inset-bottom));
+      left: 50%; transform: translateX(-50%);
+      background: #1A1A1A; color: #fff;
+      padding: 10px 18px; border-radius: 20px;
+      font-size: .875rem; font-weight: 500;
+      z-index: 500; white-space: nowrap;
+      animation: fadeInUp .2s ease, fadeOut .3s ease 2.2s forwards;
+      pointer-events: none;
+    }
+    @keyframes fadeInUp {
+      from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+      to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+    @keyframes fadeOut {
+      to { opacity: 0; }
+    }
+
     .mt-8  { margin-top: 8px; }
     .mt-16 { margin-top: 16px; }
     .hidden { display: none !important; }
@@ -576,6 +596,14 @@ function showError(id, msg) {
   el.classList.remove('hidden');
 }
 function hideMsg(id) { $(id).classList.add('hidden'); }
+
+function toast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
 
 function fmtDate(dateStr) {
   const d = new Date(dateStr + 'T12:00:00');
@@ -983,13 +1011,13 @@ async function toggleLike(matchId) {
 
   if (existing) {
     const { error } = await sb.from('match_likes').delete().eq('id', existing.id);
-    if (error) return;
+    if (error) { toast('Fehler: ' + error.message); return; }
     allLikes = allLikes.filter(l => l.id !== existing.id);
   } else {
     const { data, error } = await sb.from('match_likes')
       .insert({ match_id: matchId, player_id: currentUser.id })
       .select().single();
-    if (error) return;
+    if (error) { toast('Fehler: ' + error.message); return; }
     allLikes.push(data);
   }
   saveCache();
@@ -1064,7 +1092,7 @@ async function submitComment(matchId) {
     .select().single();
 
   input.disabled = false;
-  if (error) { input.value = content; return; }
+  if (error) { input.value = content; toast('Fehler: ' + error.message); return; }
 
   allComments.push(data);
   saveCache();
