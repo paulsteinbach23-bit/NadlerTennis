@@ -734,6 +734,33 @@ document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
 
 $('add-match-btn').addEventListener('click', openModal);
 
+// ── Content event delegation (likes, comments, delete) ─
+$('content').addEventListener('click', e => {
+  const btn  = e.target.closest('[data-action]');
+  if (!btn) return;
+  const card    = btn.closest('[data-match-id]');
+  const matchId = card?.dataset.matchId;
+  if (!matchId) return;
+
+  const action = btn.dataset.action;
+  if (action === 'like')            toggleLike(matchId);
+  else if (action === 'toggle-comments') toggleComments(matchId);
+  else if (action === 'send-comment') {
+    const input = card.querySelector('[data-action="comment-input"]');
+    submitComment(matchId, input);
+  }
+  else if (action === 'delete')     deleteMatch(matchId, btn);
+});
+
+$('content').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const input = e.target.closest('[data-action="comment-input"]');
+  if (!input) return;
+  const card    = input.closest('[data-match-id]');
+  const matchId = card?.dataset.matchId;
+  if (matchId) submitComment(matchId, input);
+});
+
 function setActiveNav(view) {
   activeView = view;
   document.querySelectorAll('.nav-item[data-view]').forEach(b => {
@@ -879,7 +906,7 @@ function matchCardHtml(m, personal) {
   const userLiked    = allLikes.some(l => l.match_id === m.id && l.player_id === currentUser.id);
 
   return `
-    <div class="match-card" id="card-${m.id}">
+    <div class="match-card" id="card-${m.id}" data-match-id="${m.id}">
       <div class="match-card-row">
         <div class="match-date-col">
           <div class="match-day">${day}</div>
@@ -892,21 +919,21 @@ function matchCardHtml(m, personal) {
         </div>
         ${badge}
         ${m.player1_id === currentUser.id ? `
-        <button class="delete-btn" onclick="deleteMatch('${m.id}', this)" title="Match löschen">
+        <button class="delete-btn" data-action="delete" title="Match löschen">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
           </svg>
         </button>` : ''}
       </div>
       <div class="card-footer">
-        <button class="like-btn ${userLiked ? 'liked' : ''}" onclick="toggleLike('${m.id}')">
+        <button class="like-btn ${userLiked ? 'liked' : ''}" data-action="like">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="${userLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/>
             <path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/>
           </svg>
           <span id="likes-${m.id}">${likeCount || ''}</span>
         </button>
-        <button class="comment-toggle-btn" onclick="toggleComments('${m.id}')">
+        <button class="comment-toggle-btn" data-action="toggle-comments">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
           </svg>
@@ -1066,47 +1093,51 @@ function renderComments(matchId) {
   section.innerHTML = `
     ${list || '<div class="no-comments">Noch keine Kommentare</div>'}
     <div class="comment-input-row">
-      <input class="comment-input" id="comment-input-${matchId}"
-        placeholder="Kommentar…" autocomplete="off"
-        onkeydown="if(event.key==='Enter')submitComment('${matchId}')">
-      <button class="comment-send" onclick="submitComment('${matchId}')">
+      <input class="comment-input" data-action="comment-input"
+        placeholder="Kommentar…" autocomplete="off" enterkeyhint="send">
+      <button class="comment-send" data-action="send-comment" type="button">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
         </svg>
       </button>
     </div>`;
 
-  document.getElementById(`comment-input-${matchId}`)?.focus();
+  section.querySelector('[data-action="comment-input"]')?.focus();
 }
 
-async function submitComment(matchId) {
-  const input   = document.getElementById(`comment-input-${matchId}`);
-  const content = input?.value.trim();
+async function submitComment(matchId, inputEl) {
+  const content = inputEl?.value?.trim();
   if (!content) return;
 
-  input.value   = '';
-  input.disabled = true;
+  inputEl.value    = '';
+  inputEl.disabled = true;
 
-  const { data, error } = await sb.from('match_comments')
-    .insert({ match_id: matchId, player_id: currentUser.id, content })
-    .select().single();
+  try {
+    const { data, error } = await sb.from('match_comments')
+      .insert({ match_id: matchId, player_id: currentUser.id, content })
+      .select().single();
 
-  input.disabled = false;
-  if (error) { input.value = content; toast('Fehler: ' + error.message); return; }
+    inputEl.disabled = false;
+    if (error) { inputEl.value = content; toast('Fehler: ' + error.message); return; }
 
-  allComments.push(data);
-  saveCache();
+    allComments.push(data);
+    saveCache();
 
-  const countEl = document.getElementById(`comment-count-${matchId}`);
-  if (countEl) countEl.textContent = allComments.filter(c => c.match_id === matchId).length;
+    const countEl = document.getElementById(`comment-count-${matchId}`);
+    if (countEl) countEl.textContent = allComments.filter(c => c.match_id === matchId).length;
 
-  renderComments(matchId);
+    renderComments(matchId);
+  } catch (e) {
+    inputEl.disabled = false;
+    inputEl.value = content;
+    toast('Fehler beim Senden');
+  }
 }
 
 // ── Delete Match ──────────────────────────────────────
 let deleteConfirmTimer = null;
 
-async function deleteMatch(id, btn) {
+async function deleteMatch(matchId, btn) {
   // First tap: highlight and ask for confirmation
   if (!btn.classList.contains('confirm')) {
     btn.classList.add('confirm');
@@ -1121,10 +1152,10 @@ async function deleteMatch(id, btn) {
   clearTimeout(deleteConfirmTimer);
   btn.disabled = true;
 
-  const { error } = await sb.from('matches').delete().eq('id', id);
+  const { error } = await sb.from('matches').delete().eq('id', matchId);
   if (error) { btn.disabled = false; btn.classList.remove('confirm'); return; }
 
-  allMatches = allMatches.filter(m => m.id !== id);
+  allMatches = allMatches.filter(m => m.id !== matchId);
   saveCache();
   renderView(activeView);
 }
