@@ -1,0 +1,930 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#1B4332">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Match Tracker">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <title>Match Tracker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --clay:   #C17A3A;
+      --green:  #1B4332;
+      --navy:   #1A2E4A;
+      --sand:   #F5EFE6;
+      --text:   #1A1A1A;
+      --muted:  #6B6B6B;
+      --border: #E0D5C8;
+      --white:  #FFFFFF;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: 'Inter', sans-serif;
+      background: var(--sand);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── LOADING ─────────────────────────────── */
+    #loading {
+      position: fixed; inset: 0;
+      background: var(--green);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      z-index: 300; gap: 12px;
+    }
+    #loading h1 {
+      font-family: 'Playfair Display', serif;
+      color: var(--sand); font-size: 1.75rem;
+    }
+    #loading p { color: rgba(245,239,230,.55); font-size: .875rem; }
+
+    /* ── AUTH ────────────────────────────────── */
+    #auth-view {
+      min-height: 100vh; min-height: 100dvh;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px; background: var(--green);
+    }
+    .auth-logo { margin-bottom: 28px; text-align: center; }
+    .auth-logo h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem; color: var(--sand);
+    }
+    .auth-logo p { color: rgba(245,239,230,.6); font-size: .875rem; margin-top: 4px; }
+    .auth-card {
+      width: 100%; max-width: 380px;
+      background: var(--white); border-radius: 12px;
+      padding: 32px 28px;
+    }
+    .auth-card h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem; margin-bottom: 24px; color: var(--navy);
+    }
+
+    /* ── FORMS ───────────────────────────────── */
+    .form-group { margin-bottom: 16px; }
+    label {
+      display: block; font-size: .75rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .08em;
+      color: var(--muted); margin-bottom: 6px;
+    }
+    input, select {
+      width: 100%; padding: 12px 14px;
+      border: 1.5px solid var(--border); border-radius: 8px;
+      font-family: 'Inter', sans-serif; font-size: .9375rem;
+      color: var(--text); background: var(--white);
+      transition: border-color .15s;
+      appearance: none; -webkit-appearance: none;
+    }
+    input:focus, select:focus { outline: none; border-color: var(--green); }
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236B6B6B' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      padding-right: 36px; cursor: pointer;
+    }
+
+    /* ── BUTTONS ─────────────────────────────── */
+    .btn {
+      width: 100%; padding: 13px; border: none; border-radius: 8px;
+      font-family: 'Inter', sans-serif; font-size: .9375rem;
+      font-weight: 600; cursor: pointer;
+      transition: opacity .15s; letter-spacing: .01em;
+    }
+    .btn:active { opacity: .8; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-primary  { background: var(--green); color: var(--white); }
+    .btn-secondary {
+      background: transparent; color: var(--green);
+      border: 1.5px solid var(--green);
+    }
+    .btn-clay { background: var(--clay); color: var(--white); }
+
+    .auth-toggle {
+      margin-top: 20px; text-align: center;
+      font-size: .875rem; color: var(--muted);
+    }
+    .auth-toggle a { color: var(--green); font-weight: 500; text-decoration: none; cursor: pointer; }
+
+    /* ── MESSAGES ────────────────────────────── */
+    .error-msg {
+      background: #FEE2E2; color: #B91C1C;
+      border-radius: 6px; padding: 10px 14px;
+      font-size: .875rem; margin-bottom: 16px;
+    }
+    .info-msg {
+      background: #D1FAE5; color: #065F46;
+      border-radius: 6px; padding: 10px 14px;
+      font-size: .875rem; margin-bottom: 16px;
+    }
+
+    /* ── APP SHELL ───────────────────────────── */
+    #app-view {
+      display: flex; flex-direction: column;
+      min-height: 100vh; min-height: 100dvh;
+    }
+    .app-header {
+      background: var(--green); color: var(--white);
+      padding: 16px 20px 14px;
+      display: flex; align-items: center; justify-content: space-between;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .app-header h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.25rem; font-weight: 600;
+    }
+    .header-user { font-size: .8125rem; color: rgba(245,239,230,.7); }
+
+    .content { flex: 1; overflow-y: auto; padding: 20px 16px 108px; }
+
+    /* ── BOTTOM NAV ──────────────────────────── */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--white); border-top: 1px solid var(--border);
+      display: flex; z-index: 20;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .nav-item {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; padding: 10px 4px 8px;
+      cursor: pointer; border: none; background: none;
+      font-family: 'Inter', sans-serif; font-size: .6875rem;
+      color: var(--muted); transition: color .15s; gap: 3px;
+    }
+    .nav-item.active { color: var(--green); }
+    .nav-add {
+      background: var(--clay); color: var(--white) !important;
+      border-radius: 12px; margin: 5px 6px; padding: 7px 4px;
+    }
+
+    /* ── SECTION HEADER ──────────────────────── */
+    .section-header { margin-bottom: 20px; }
+    .section-header h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.5rem; color: var(--navy);
+    }
+    .section-header p { color: var(--muted); font-size: .875rem; margin-top: 2px; }
+
+    .subheader {
+      font-size: .6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .1em;
+      color: var(--muted); margin: 20px 0 10px;
+    }
+
+    /* ── STATS ROW ───────────────────────────── */
+    .stats-row {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 10px; margin-bottom: 8px;
+    }
+    .stat-card {
+      background: var(--white); border-radius: 10px;
+      padding: 16px 12px; text-align: center;
+      border: 1px solid var(--border);
+    }
+    .stat-number {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem; font-weight: 700;
+      color: var(--navy); line-height: 1;
+    }
+    .stat-label {
+      font-size: .6875rem; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); margin-top: 4px;
+    }
+    .stat-card.wins .stat-number   { color: var(--green); }
+    .stat-card.losses .stat-number { color: var(--clay);  }
+
+    /* ── MATCH CARD ──────────────────────────── */
+    .match-list { display: flex; flex-direction: column; gap: 8px; }
+    .match-card {
+      background: var(--white); border-radius: 10px;
+      padding: 13px 15px; border: 1px solid var(--border);
+      display: flex; align-items: center; gap: 12px;
+    }
+    .match-date-col { text-align: center; min-width: 36px; }
+    .match-day {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.2rem; font-weight: 700; color: var(--navy); line-height: 1;
+    }
+    .match-month {
+      font-size: .625rem; text-transform: uppercase;
+      letter-spacing: .06em; color: var(--muted);
+    }
+    .match-divider { width: 1px; height: 38px; background: var(--border); flex-shrink: 0; }
+    .match-info { flex: 1; min-width: 0; }
+    .match-players {
+      font-size: .875rem; font-weight: 500;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .match-score { font-size: .8125rem; color: var(--muted); margin-top: 2px; }
+    .match-badge {
+      font-size: .6875rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em;
+      padding: 4px 8px; border-radius: 4px; flex-shrink: 0;
+    }
+    .badge-win     { background: #DCFCE7; color: #166534; }
+    .badge-loss    { background: #FEE2E2; color: #991B1B; }
+    .badge-neutral { background: var(--sand); color: var(--muted); }
+
+    .empty-state {
+      text-align: center; padding: 48px 20px; color: var(--muted);
+    }
+    .empty-state svg { opacity: .35; margin-bottom: 12px; }
+    .empty-state p { font-size: .875rem; }
+
+    /* ── LEADERBOARD ─────────────────────────── */
+    .leaderboard {
+      background: var(--white); border-radius: 10px;
+      border: 1px solid var(--border); overflow: hidden;
+    }
+    .lb-row {
+      display: grid;
+      grid-template-columns: 30px 1fr 36px 36px 52px;
+      align-items: center; gap: 8px;
+      padding: 13px 16px;
+      border-bottom: 1px solid var(--border);
+      font-size: .875rem;
+    }
+    .lb-row:last-child { border-bottom: none; }
+    .lb-header {
+      background: var(--sand); font-size: .625rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+      padding: 9px 16px;
+    }
+    .lb-rank {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem; font-weight: 700;
+      color: var(--muted); text-align: center;
+    }
+    .lb-rank.gold   { color: #B7861A; }
+    .lb-rank.silver { color: #7A8A99; }
+    .lb-rank.bronze { color: #A0664A; }
+    .lb-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .lb-name.me { color: var(--green); font-weight: 600; }
+    .lb-num { text-align: center; color: var(--muted); }
+    .lb-pct { text-align: right; font-weight: 600; color: var(--navy); }
+
+    /* ── MODAL ───────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(26,46,74,.55);
+      z-index: 100; display: flex;
+      align-items: flex-end;
+    }
+    .modal {
+      background: var(--white);
+      border-radius: 20px 20px 0 0;
+      padding: 0 20px calc(24px + env(safe-area-inset-bottom));
+      width: 100%; max-height: 92vh; overflow-y: auto;
+    }
+    .modal-handle {
+      width: 36px; height: 4px;
+      background: var(--border); border-radius: 2px;
+      margin: 14px auto 20px;
+    }
+    .modal h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.375rem; color: var(--navy); margin-bottom: 20px;
+    }
+
+    /* ── RESULT TOGGLE ───────────────────────── */
+    .result-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .result-btn {
+      padding: 13px; border-radius: 8px;
+      border: 1.5px solid var(--border);
+      background: var(--white); font-family: 'Inter', sans-serif;
+      font-size: .875rem; font-weight: 600;
+      cursor: pointer; transition: all .15s; color: var(--muted);
+    }
+    .result-btn.sel-win  { background: #DCFCE7; border-color: #166534; color: #166534; }
+    .result-btn.sel-loss { background: #FEE2E2; border-color: #991B1B; color: #991B1B; }
+
+    .mt-8  { margin-top: 8px; }
+    .mt-16 { margin-top: 16px; }
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<!-- ══ LOADING ══════════════════════════════════════════ -->
+<div id="loading">
+  <h1>Match Tracker</h1>
+  <p>Loading…</p>
+</div>
+
+<!-- ══ AUTH VIEW ════════════════════════════════════════ -->
+<div id="auth-view" class="hidden">
+  <div class="auth-logo">
+    <h1>Match Tracker</h1>
+    <p>Tennis results for friends</p>
+  </div>
+  <div class="auth-card">
+    <h2 id="auth-title">Welcome back</h2>
+    <div id="auth-error" class="error-msg hidden"></div>
+    <div id="auth-info"  class="info-msg  hidden"></div>
+    <form id="auth-form">
+      <div class="form-group hidden" id="name-field">
+        <label for="display-name">Your name</label>
+        <input type="text" id="display-name" placeholder="e.g. Rafael Nadler" autocomplete="name">
+      </div>
+      <div class="form-group">
+        <label for="auth-email">Email</label>
+        <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email" required>
+      </div>
+      <div class="form-group">
+        <label for="auth-password">Password</label>
+        <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <button type="submit" class="btn btn-primary" id="auth-submit">Sign in</button>
+    </form>
+    <div class="auth-toggle">
+      <span id="auth-toggle-label">Don't have an account?</span>
+      <a id="auth-toggle-link"> Sign up</a>
+    </div>
+  </div>
+</div>
+
+<!-- ══ APP VIEW ═════════════════════════════════════════ -->
+<div id="app-view" class="hidden">
+  <header class="app-header">
+    <h1 id="view-title">Dashboard</h1>
+    <span class="header-user" id="header-user"></span>
+  </header>
+
+  <main class="content" id="content"></main>
+
+  <nav class="bottom-nav">
+    <button class="nav-item active" data-view="dashboard">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+        <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+      </svg>
+      Dashboard
+    </button>
+    <button class="nav-item" data-view="matches">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+      </svg>
+      Matches
+    </button>
+    <button class="nav-item nav-add" id="add-match-btn">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+      </svg>
+      Add
+    </button>
+    <button class="nav-item" data-view="leaderboard">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+      </svg>
+      Ranking
+    </button>
+    <button class="nav-item" id="signout-btn">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+        <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+      Sign out
+    </button>
+  </nav>
+</div>
+
+<!-- ══ ADD MATCH MODAL ══════════════════════════════════ -->
+<div id="match-modal" class="modal-overlay hidden" id="match-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h2>Log a Match</h2>
+    <div id="modal-error" class="error-msg hidden"></div>
+    <form id="match-form">
+      <div class="form-group">
+        <label for="opponent-select">Opponent</label>
+        <select id="opponent-select" required>
+          <option value="">Select opponent…</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="score-input">Score</label>
+        <input type="text" id="score-input" placeholder="e.g. 6-3, 7-5" autocomplete="off" required>
+      </div>
+      <div class="form-group">
+        <label for="date-input">Date played</label>
+        <input type="date" id="date-input" required>
+      </div>
+      <div class="form-group">
+        <label>Result</label>
+        <div class="result-toggle">
+          <button type="button" class="result-btn" id="btn-win"  onclick="selectResult('win')">I Won</button>
+          <button type="button" class="result-btn" id="btn-loss" onclick="selectResult('loss')">I Lost</button>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-clay mt-16" id="match-submit">Save Match</button>
+      <button type="button" class="btn btn-secondary mt-8" onclick="closeModal()">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<!-- ══ SUPABASE + APP SCRIPT ════════════════════════════ -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+'use strict';
+
+const SUPABASE_URL = 'https://utkhkxayvnmhkipkaavk.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0a2hreGF5dm5taGtpcGthYXZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU3NDk0NDYsImV4cCI6MjA5MTMyNTQ0Nn0.dlXozME_GvdbE2LjZxGhI_tnH1XNSJQMJcbEiuYMWmc';
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// ── State ─────────────────────────────────────────────
+let currentUser    = null;
+let currentProfile = null;
+let allProfiles    = [];
+let allMatches     = [];
+let activeView     = 'dashboard';
+let selectedResult = null;
+let isSignup       = false;
+
+// ── Helpers ───────────────────────────────────────────
+const $   = id => document.getElementById(id);
+const show = id => $(id).classList.remove('hidden');
+const hide = id => $(id).classList.add('hidden');
+
+function showError(id, msg) {
+  const el = $(id);
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+function hideMsg(id) { $(id).classList.add('hidden'); }
+
+function fmtDate(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return {
+    day:   d.getDate(),
+    month: d.toLocaleString('en', { month: 'short' }).toUpperCase()
+  };
+}
+
+// ── Cache (localStorage) ──────────────────────────────
+function saveCache() {
+  try {
+    localStorage.setItem('mt_profiles', JSON.stringify(allProfiles));
+    localStorage.setItem('mt_matches',  JSON.stringify(allMatches));
+  } catch (_) {}
+}
+function loadCache() {
+  try {
+    const p = localStorage.getItem('mt_profiles');
+    const m = localStorage.getItem('mt_matches');
+    if (p) allProfiles = JSON.parse(p);
+    if (m) allMatches  = JSON.parse(m);
+  } catch (_) {}
+}
+
+// ── Data ──────────────────────────────────────────────
+async function loadData() {
+  const [r1, r2] = await Promise.all([
+    sb.from('profiles').select('id, display_name, email').order('display_name'),
+    sb.from('matches').select('*').order('played_at', { ascending: false })
+  ]);
+
+  if (!r1.error && r1.data) allProfiles = r1.data;
+  else loadCache();
+
+  if (!r2.error && r2.data) allMatches = r2.data;
+  else {
+    const cached = localStorage.getItem('mt_matches');
+    if (cached) try { allMatches = JSON.parse(cached); } catch (_) {}
+  }
+
+  if (!r1.error && !r2.error) saveCache();
+}
+
+// ── Init ──────────────────────────────────────────────
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) {
+    currentUser = session.user;
+    await loadUserProfile();
+  } else {
+    hide('loading');
+    show('auth-view');
+  }
+
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_OUT') {
+      currentUser = null; currentProfile = null;
+      hide('app-view');
+      resetAuthForm();
+      show('auth-view');
+    }
+  });
+}
+
+async function loadUserProfile() {
+  const { data, error } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+
+  if (!error && data) {
+    currentProfile = data;
+    await loadData();
+    hide('loading'); hide('auth-view');
+    $('header-user').textContent = currentProfile.display_name;
+    show('app-view');
+    setActiveNav('dashboard');
+    renderView('dashboard');
+  } else {
+    hide('loading'); hide('auth-view');
+    showProfileSetup();
+  }
+}
+
+// ── Auth form ─────────────────────────────────────────
+$('auth-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn      = $('auth-submit');
+  const email    = $('auth-email').value.trim();
+  const password = $('auth-password').value;
+  const name     = $('display-name').value.trim();
+
+  hideMsg('auth-error'); hideMsg('auth-info');
+  btn.disabled = true;
+  btn.textContent = isSignup ? 'Creating account…' : 'Signing in…';
+
+  try {
+    if (isSignup) {
+      if (!name) { showError('auth-error', 'Please enter your name.'); return; }
+
+      const { data, error } = await sb.auth.signUp({ email, password });
+      if (error) throw error;
+
+      if (data.user && !data.user.identities?.length === 0) {
+        // Email confirmation may be required
+        showError('auth-info', 'Check your email to confirm your account, then sign in.');
+        // Note: info-msg is green — intentional (not an error)
+        $('auth-info').classList.remove('hidden');
+        $('auth-info').classList.add('info-msg');
+        return;
+      }
+
+      if (data.user) {
+        currentUser = data.user;
+        const { error: pe } = await sb.from('profiles').insert({
+          id: currentUser.id,
+          display_name: name,
+          email
+        });
+        if (pe && pe.code !== '23505') throw pe;
+        await loadUserProfile();
+      }
+
+    } else {
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      currentUser = data.user;
+      await loadUserProfile();
+    }
+  } catch (err) {
+    showError('auth-error', err.message || 'Something went wrong.');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = isSignup ? 'Sign up' : 'Sign in';
+  }
+});
+
+$('auth-toggle-link').addEventListener('click', () => {
+  isSignup = !isSignup;
+  $('auth-title').textContent        = isSignup ? 'Create account' : 'Welcome back';
+  $('auth-submit').textContent       = isSignup ? 'Sign up'        : 'Sign in';
+  $('auth-toggle-label').textContent = isSignup ? 'Already have an account?' : "Don't have an account?";
+  $('auth-toggle-link').textContent  = isSignup ? ' Sign in'       : ' Sign up';
+  $('name-field').classList.toggle('hidden', !isSignup);
+  $('auth-password').autocomplete = isSignup ? 'new-password' : 'current-password';
+  hideMsg('auth-error'); hideMsg('auth-info');
+});
+
+function resetAuthForm() {
+  isSignup = false;
+  $('auth-title').textContent        = 'Welcome back';
+  $('auth-submit').textContent       = 'Sign in';
+  $('auth-toggle-label').textContent = "Don't have an account?";
+  $('auth-toggle-link').textContent  = ' Sign up';
+  $('name-field').classList.add('hidden');
+  $('auth-form').reset();
+  hideMsg('auth-error'); hideMsg('auth-info');
+}
+
+// ── Profile setup ─────────────────────────────────────
+function showProfileSetup() {
+  $('auth-view').innerHTML = `
+    <div class="auth-logo">
+      <h1>Match Tracker</h1>
+      <p>One last step</p>
+    </div>
+    <div class="auth-card">
+      <h2>What's your name?</h2>
+      <div id="setup-error" class="error-msg hidden"></div>
+      <div class="form-group">
+        <label for="setup-name">Display name</label>
+        <input type="text" id="setup-name" placeholder="e.g. Rafael Nadler" autofocus autocomplete="name">
+      </div>
+      <button class="btn btn-primary" id="setup-btn" onclick="saveProfile()">Continue</button>
+    </div>
+  `;
+  show('auth-view');
+}
+
+async function saveProfile() {
+  const name = $('setup-name').value.trim();
+  if (!name) { showError('setup-error', 'Please enter a display name.'); return; }
+
+  const btn = $('setup-btn');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const { error } = await sb.from('profiles').insert({
+    id: currentUser.id,
+    display_name: name,
+    email: currentUser.email
+  });
+
+  if (error) {
+    showError('setup-error', error.message);
+    btn.disabled = false; btn.textContent = 'Continue';
+    return;
+  }
+  await loadUserProfile();
+}
+
+// ── Sign out ──────────────────────────────────────────
+$('signout-btn').addEventListener('click', async () => {
+  await sb.auth.signOut();
+});
+
+// ── Navigation ────────────────────────────────────────
+document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    setActiveNav(btn.dataset.view);
+    renderView(btn.dataset.view);
+  });
+});
+
+$('add-match-btn').addEventListener('click', openModal);
+
+function setActiveNav(view) {
+  activeView = view;
+  document.querySelectorAll('.nav-item[data-view]').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === view);
+  });
+  const titles = { dashboard: 'Dashboard', matches: 'All Matches', leaderboard: 'Leaderboard' };
+  $('view-title').textContent = titles[view] || '';
+}
+
+// ── View renderer ─────────────────────────────────────
+function renderView(view) {
+  const el = $('content');
+  if (view === 'dashboard')   renderDashboard(el);
+  else if (view === 'matches') renderMatches(el);
+  else if (view === 'leaderboard') renderLeaderboard(el);
+}
+
+// Dashboard
+function renderDashboard(el) {
+  const mine  = allMatches.filter(m => m.player1_id === currentUser.id || m.player2_id === currentUser.id);
+  const wins  = mine.filter(m => m.winner_id === currentUser.id).length;
+  const losses = mine.length - wins;
+  const recent = mine.slice(0, 5);
+  const firstName = currentProfile.display_name.split(' ')[0];
+
+  el.innerHTML = `
+    <div class="section-header">
+      <h2>Hello, ${escHtml(firstName)}</h2>
+      <p>Your match record</p>
+    </div>
+    <div class="stats-row">
+      <div class="stat-card wins">
+        <div class="stat-number">${wins}</div>
+        <div class="stat-label">Wins</div>
+      </div>
+      <div class="stat-card losses">
+        <div class="stat-number">${losses}</div>
+        <div class="stat-label">Losses</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">${mine.length}</div>
+        <div class="stat-label">Played</div>
+      </div>
+    </div>
+    <div class="subheader">Recent matches</div>
+    <div class="match-list">
+      ${recent.length
+        ? recent.map(m => matchCardHtml(m, true)).join('')
+        : emptyState('No matches yet — log your first one!')}
+    </div>
+  `;
+}
+
+// All Matches
+function renderMatches(el) {
+  el.innerHTML = `
+    <div class="section-header">
+      <h2>All Matches</h2>
+      <p>${allMatches.length} match${allMatches.length !== 1 ? 'es' : ''} logged</p>
+    </div>
+    <div class="match-list">
+      ${allMatches.length
+        ? allMatches.map(m => matchCardHtml(m, false)).join('')
+        : emptyState('No matches logged yet.')}
+    </div>
+  `;
+}
+
+// Leaderboard
+function renderLeaderboard(el) {
+  const stats = {};
+  allProfiles.forEach(p => {
+    stats[p.id] = { name: p.display_name, wins: 0, losses: 0 };
+  });
+
+  allMatches.forEach(m => {
+    const loserId = m.winner_id === m.player1_id ? m.player2_id : m.player1_id;
+    if (stats[m.winner_id]) stats[m.winner_id].wins++;
+    if (stats[loserId])     stats[loserId].losses++;
+  });
+
+  const ranked = Object.entries(stats)
+    .map(([id, s]) => ({
+      id, ...s,
+      total: s.wins + s.losses,
+      pct: s.wins + s.losses > 0 ? s.wins / (s.wins + s.losses) : 0
+    }))
+    .filter(p => p.total > 0)
+    .sort((a, b) => b.pct - a.pct || b.wins - a.wins || a.name.localeCompare(b.name));
+
+  const rankClass = i => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
+
+  el.innerHTML = `
+    <div class="section-header">
+      <h2>Leaderboard</h2>
+      <p>Ranked by win rate (min. 1 match)</p>
+    </div>
+    <div class="leaderboard">
+      <div class="lb-row lb-header">
+        <span>#</span>
+        <span>Player</span>
+        <span style="text-align:center">W</span>
+        <span style="text-align:center">L</span>
+        <span style="text-align:right">Win %</span>
+      </div>
+      ${ranked.length
+        ? ranked.map((p, i) => `
+          <div class="lb-row">
+            <span class="lb-rank ${rankClass(i)}">${i + 1}</span>
+            <span class="lb-name ${p.id === currentUser.id ? 'me' : ''}">${escHtml(p.name)}${p.id === currentUser.id ? ' ★' : ''}</span>
+            <span class="lb-num">${p.wins}</span>
+            <span class="lb-num">${p.losses}</span>
+            <span class="lb-pct">${Math.round(p.pct * 100)}%</span>
+          </div>`).join('')
+        : '<div style="padding:24px;text-align:center;color:var(--muted);font-size:.875rem">No matches yet</div>'}
+    </div>
+  `;
+}
+
+// Match card HTML
+function matchCardHtml(m, personal) {
+  const p1   = allProfiles.find(p => p.id === m.player1_id);
+  const p2   = allProfiles.find(p => p.id === m.player2_id);
+  const p1n  = p1?.display_name || 'Unknown';
+  const p2n  = p2?.display_name || 'Unknown';
+  const { day, month } = fmtDate(m.played_at);
+
+  let badge;
+  if (personal) {
+    const won = m.winner_id === currentUser.id;
+    badge = `<span class="match-badge ${won ? 'badge-win' : 'badge-loss'}">${won ? 'Win' : 'Loss'}</span>`;
+  } else {
+    const winner = allProfiles.find(p => p.id === m.winner_id);
+    const wName  = winner?.display_name?.split(' ')[0] || '?';
+    badge = `<span class="match-badge badge-neutral">${escHtml(wName)}</span>`;
+  }
+
+  return `
+    <div class="match-card">
+      <div class="match-date-col">
+        <div class="match-day">${day}</div>
+        <div class="match-month">${month}</div>
+      </div>
+      <div class="match-divider"></div>
+      <div class="match-info">
+        <div class="match-players">${escHtml(p1n)} vs ${escHtml(p2n)}</div>
+        <div class="match-score">${escHtml(m.score)}</div>
+      </div>
+      ${badge}
+    </div>`;
+}
+
+function emptyState(msg) {
+  return `<div class="empty-state">
+    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+      <circle cx="12" cy="12" r="10"/>
+      <path d="M8.56 2.75c4.37 6.03 6.02 9.42 8.03 17.72m2.54-15.38c-3.72 4.35-8.94 5.66-16.88 5.85m19.5 1.9c-3.5-.93-6.63-.82-8.94 0-2.58.92-5.01 2.86-7.44 6.32"/>
+    </svg>
+    <p>${msg}</p>
+  </div>`;
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── Add Match Modal ───────────────────────────────────
+function openModal() {
+  const sel = $('opponent-select');
+  sel.innerHTML = '<option value="">Select opponent…</option>';
+  allProfiles
+    .filter(p => p.id !== currentUser.id)
+    .forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.display_name;
+      sel.appendChild(opt);
+    });
+
+  $('date-input').value  = new Date().toISOString().split('T')[0];
+  $('score-input').value = '';
+  selectedResult = null;
+  $('btn-win').className  = 'result-btn';
+  $('btn-loss').className = 'result-btn';
+  $('match-submit').disabled = false;
+  $('match-submit').textContent = 'Save Match';
+  hideMsg('modal-error');
+  show('match-modal');
+}
+
+function closeModal() { hide('match-modal'); }
+
+function selectResult(r) {
+  selectedResult = r;
+  $('btn-win').className  = 'result-btn' + (r === 'win'  ? ' sel-win'  : '');
+  $('btn-loss').className = 'result-btn' + (r === 'loss' ? ' sel-loss' : '');
+}
+
+$('match-modal').addEventListener('click', e => {
+  if (e.target === $('match-modal')) closeModal();
+});
+
+$('match-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  hideMsg('modal-error');
+
+  const opponentId = $('opponent-select').value;
+  const score      = $('score-input').value.trim();
+  const date       = $('date-input').value;
+
+  if (!opponentId)    { showError('modal-error', 'Please select an opponent.'); return; }
+  if (!score)         { showError('modal-error', 'Please enter the score.'); return; }
+  if (!date)          { showError('modal-error', 'Please select a date.'); return; }
+  if (!selectedResult){ showError('modal-error', 'Please select Win or Loss.'); return; }
+
+  const winnerId = selectedResult === 'win' ? currentUser.id : opponentId;
+  const btn = $('match-submit');
+  btn.disabled = true; btn.textContent = 'Saving…';
+
+  const { error } = await sb.from('matches').insert({
+    player1_id: currentUser.id,
+    player2_id: opponentId,
+    winner_id:  winnerId,
+    score,
+    played_at: date
+  });
+
+  btn.disabled = false; btn.textContent = 'Save Match';
+
+  if (error) { showError('modal-error', error.message); return; }
+
+  closeModal();
+  await loadData();
+  renderView(activeView);
+});
+
+// ── Service Worker ────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
+// ── Boot ──────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
