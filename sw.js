@@ -1,5 +1,6 @@
-const CACHE = 'match-tracker-v1';
-const SHELL = ['/', '/index.html', '/manifest.json', '/icon.svg'];
+const CACHE = 'match-tracker-v2';
+const BASE  = self.registration.scope;
+const SHELL = [BASE, BASE + 'index.html', BASE + 'manifest.json', BASE + 'icon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(

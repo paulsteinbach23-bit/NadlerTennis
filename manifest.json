@@ -2,7 +2,7 @@
   "name": "Match Tracker",
   "short_name": "Match Tracker",
   "description": "Tennis match results for friends",
-  "start_url": "/",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#1B4332",
   "theme_color": "#1B4332",
