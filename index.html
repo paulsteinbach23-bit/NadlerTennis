@@ -203,8 +203,9 @@
     .match-card {
       background: var(--white); border-radius: 10px;
       padding: 13px 15px; border: 1px solid var(--border);
-      display: flex; align-items: center; gap: 12px;
+      display: flex; flex-direction: column;
     }
+    .match-card-row { display: flex; align-items: center; gap: 12px; }
     .match-date-col { text-align: center; min-width: 36px; }
     .match-day {
       font-family: 'Playfair Display', serif;
@@ -229,6 +230,53 @@
     .badge-win     { background: #DCFCE7; color: #166534; }
     .badge-loss    { background: #FEE2E2; color: #991B1B; }
     .badge-neutral { background: var(--sand); color: var(--muted); }
+
+    /* ── CARD FOOTER (likes + comments) ─────── */
+    .card-footer {
+      display: flex; align-items: center; gap: 4px;
+      padding-top: 10px; margin-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+    .like-btn, .comment-toggle-btn {
+      display: flex; align-items: center; gap: 5px;
+      background: none; border: none; cursor: pointer;
+      padding: 5px 8px; border-radius: 6px;
+      font-family: 'Inter', sans-serif; font-size: .8125rem;
+      font-weight: 500; color: var(--muted);
+      transition: background .15s, color .15s; line-height: 1;
+    }
+    .like-btn:hover, .comment-toggle-btn:hover { background: var(--sand); color: var(--text); }
+    .like-btn.liked { color: var(--clay); }
+    .like-btn.liked svg { fill: var(--clay); stroke: var(--clay); }
+
+    .comments-section { margin-top: 10px; }
+    .comment {
+      display: flex; align-items: baseline; gap: 6px;
+      padding: 6px 0; border-bottom: 1px solid var(--border);
+      font-size: .8125rem;
+    }
+    .comment:last-of-type { border-bottom: none; }
+    .comment-author { font-weight: 600; color: var(--navy); flex-shrink: 0; }
+    .comment-text   { flex: 1; color: var(--text); }
+    .comment-time   { font-size: .6875rem; color: var(--muted); flex-shrink: 0; }
+    .no-comments    { font-size: .8125rem; color: var(--muted); padding: 4px 0 8px; }
+    .comment-input-row {
+      display: flex; gap: 8px; align-items: center;
+      margin-top: 8px;
+    }
+    .comment-input {
+      flex: 1; padding: 8px 12px; border: 1.5px solid var(--border);
+      border-radius: 20px; font-family: 'Inter', sans-serif;
+      font-size: .8125rem; background: var(--sand);
+    }
+    .comment-input:focus { outline: none; border-color: var(--green); background: var(--white); }
+    .comment-send {
+      background: var(--green); border: none; border-radius: 50%;
+      width: 32px; height: 32px; display: flex; align-items: center;
+      justify-content: center; cursor: pointer; flex-shrink: 0;
+      color: var(--white); transition: opacity .15s;
+    }
+    .comment-send:active { opacity: .8; }
 
     .empty-state {
       text-align: center; padding: 48px 20px; color: var(--muted);
@@ -460,6 +508,8 @@ let allProfiles    = [];
 let allMatches     = [];
 let activeView     = 'dashboard';
 let selectedResult = null;
+let allLikes       = [];
+let allComments    = [];
 
 // ── Helpers ───────────────────────────────────────────
 const $   = id => document.getElementById(id);
@@ -486,32 +536,36 @@ function saveCache() {
   try {
     localStorage.setItem('mt_profiles', JSON.stringify(allProfiles));
     localStorage.setItem('mt_matches',  JSON.stringify(allMatches));
+    localStorage.setItem('mt_likes',    JSON.stringify(allLikes));
+    localStorage.setItem('mt_comments', JSON.stringify(allComments));
   } catch (_) {}
 }
 function loadCache() {
   try {
     const p = localStorage.getItem('mt_profiles');
     const m = localStorage.getItem('mt_matches');
+    const l = localStorage.getItem('mt_likes');
+    const c = localStorage.getItem('mt_comments');
     if (p) allProfiles = JSON.parse(p);
     if (m) allMatches  = JSON.parse(m);
+    if (l) allLikes    = JSON.parse(l);
+    if (c) allComments = JSON.parse(c);
   } catch (_) {}
 }
 
 // ── Data ──────────────────────────────────────────────
 async function loadData() {
-  const [r1, r2] = await Promise.all([
+  const [r1, r2, r3, r4] = await Promise.all([
     sb.from('profiles').select('id, display_name').order('display_name'),
-    sb.from('matches').select('*').order('played_at', { ascending: false })
+    sb.from('matches').select('*').order('played_at', { ascending: false }),
+    sb.from('match_likes').select('*'),
+    sb.from('match_comments').select('*').order('created_at', { ascending: true })
   ]);
 
-  if (!r1.error && r1.data) allProfiles = r1.data;
-  else loadCache();
-
-  if (!r2.error && r2.data) allMatches = r2.data;
-  else {
-    const cached = localStorage.getItem('mt_matches');
-    if (cached) try { allMatches = JSON.parse(cached); } catch (_) {}
-  }
+  if (!r1.error && r1.data) allProfiles = r1.data; else loadCache();
+  if (!r2.error && r2.data) allMatches  = r2.data;
+  if (!r3.error && r3.data) allLikes    = r3.data;
+  if (!r4.error && r4.data) allComments = r4.data;
 
   if (!r1.error && !r2.error) saveCache();
 }
@@ -734,24 +788,46 @@ function matchCardHtml(m, personal) {
     badge = `<span class="match-badge badge-neutral">${escHtml(wName)}</span>`;
   }
 
+  const likeCount    = allLikes.filter(l => l.match_id === m.id).length;
+  const commentCount = allComments.filter(c => c.match_id === m.id).length;
+  const userLiked    = allLikes.some(l => l.match_id === m.id && l.player_id === currentUser.id);
+
   return `
-    <div class="match-card">
-      <div class="match-date-col">
-        <div class="match-day">${day}</div>
-        <div class="match-month">${month}</div>
+    <div class="match-card" id="card-${m.id}">
+      <div class="match-card-row">
+        <div class="match-date-col">
+          <div class="match-day">${day}</div>
+          <div class="match-month">${month}</div>
+        </div>
+        <div class="match-divider"></div>
+        <div class="match-info">
+          <div class="match-players">${escHtml(p1n)} vs ${escHtml(p2n)}</div>
+          <div class="match-score">${escHtml(m.score)}</div>
+        </div>
+        ${badge}
+        ${m.player1_id === currentUser.id ? `
+        <button class="delete-btn" onclick="deleteMatch('${m.id}', this)" title="Match löschen">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+          </svg>
+        </button>` : ''}
       </div>
-      <div class="match-divider"></div>
-      <div class="match-info">
-        <div class="match-players">${escHtml(p1n)} vs ${escHtml(p2n)}</div>
-        <div class="match-score">${escHtml(m.score)}</div>
+      <div class="card-footer">
+        <button class="like-btn ${userLiked ? 'liked' : ''}" onclick="toggleLike('${m.id}')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="${userLiked ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/>
+            <path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3"/>
+          </svg>
+          <span id="likes-${m.id}">${likeCount || ''}</span>
+        </button>
+        <button class="comment-toggle-btn" onclick="toggleComments('${m.id}')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+          </svg>
+          <span id="comment-count-${m.id}">${commentCount || ''}</span>
+        </button>
       </div>
-      ${badge}
-      ${m.player1_id === currentUser.id ? `
-      <button class="delete-btn" onclick="deleteMatch('${m.id}', this)" title="Match löschen">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-        </svg>
-      </button>` : ''}
+      <div id="comments-${m.id}" class="comments-section hidden"></div>
     </div>`;
 }
 
@@ -842,6 +918,104 @@ $('match-form').addEventListener('submit', async e => {
   await loadData();
   renderView(activeView);
 });
+
+// ── Likes ─────────────────────────────────────────────
+async function toggleLike(matchId) {
+  const existing = allLikes.find(l => l.match_id === matchId && l.player_id === currentUser.id);
+
+  if (existing) {
+    const { error } = await sb.from('match_likes').delete().eq('id', existing.id);
+    if (error) return;
+    allLikes = allLikes.filter(l => l.id !== existing.id);
+  } else {
+    const { data, error } = await sb.from('match_likes')
+      .insert({ match_id: matchId, player_id: currentUser.id })
+      .select().single();
+    if (error) return;
+    allLikes.push(data);
+  }
+  saveCache();
+
+  const liked = !existing;
+  const btn   = document.querySelector(`#card-${matchId} .like-btn`);
+  const count = document.getElementById(`likes-${matchId}`);
+  const total = allLikes.filter(l => l.match_id === matchId).length;
+
+  if (btn) {
+    btn.classList.toggle('liked', liked);
+    const svg = btn.querySelector('svg');
+    if (svg) svg.setAttribute('fill', liked ? 'currentColor' : 'none');
+  }
+  if (count) count.textContent = total || '';
+}
+
+// ── Comments ───────────────────────────────────────────
+function toggleComments(matchId) {
+  const section = document.getElementById(`comments-${matchId}`);
+  if (!section) return;
+  if (section.classList.contains('hidden')) {
+    section.classList.remove('hidden');
+    renderComments(matchId);
+  } else {
+    section.classList.add('hidden');
+  }
+}
+
+function renderComments(matchId) {
+  const section  = document.getElementById(`comments-${matchId}`);
+  const comments = allComments.filter(c => c.match_id === matchId);
+
+  const list = comments.map(c => {
+    const author = allProfiles.find(p => p.id === c.player_id);
+    const name   = author?.display_name || '?';
+    const date   = new Date(c.created_at);
+    const time   = date.toLocaleDateString('de', { day: 'numeric', month: 'short' });
+    return `<div class="comment">
+      <span class="comment-author">${escHtml(name)}</span>
+      <span class="comment-text">${escHtml(c.content)}</span>
+      <span class="comment-time">${time}</span>
+    </div>`;
+  }).join('');
+
+  section.innerHTML = `
+    ${list || '<div class="no-comments">Noch keine Kommentare</div>'}
+    <div class="comment-input-row">
+      <input class="comment-input" id="comment-input-${matchId}"
+        placeholder="Kommentar…" autocomplete="off"
+        onkeydown="if(event.key==='Enter')submitComment('${matchId}')">
+      <button class="comment-send" onclick="submitComment('${matchId}')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+        </svg>
+      </button>
+    </div>`;
+
+  document.getElementById(`comment-input-${matchId}`)?.focus();
+}
+
+async function submitComment(matchId) {
+  const input   = document.getElementById(`comment-input-${matchId}`);
+  const content = input?.value.trim();
+  if (!content) return;
+
+  input.value   = '';
+  input.disabled = true;
+
+  const { data, error } = await sb.from('match_comments')
+    .insert({ match_id: matchId, player_id: currentUser.id, content })
+    .select().single();
+
+  input.disabled = false;
+  if (error) { input.value = content; return; }
+
+  allComments.push(data);
+  saveCache();
+
+  const countEl = document.getElementById(`comment-count-${matchId}`);
+  if (countEl) countEl.textContent = allComments.filter(c => c.match_id === matchId).length;
+
+  renderComments(matchId);
+}
 
 // ── Delete Match ──────────────────────────────────────
 let deleteConfirmTimer = null;
