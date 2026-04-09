@@ -1,4 +1,4 @@
-const CACHE = 'match-tracker-v2';
+const CACHE = 'match-tracker-v3';
 const BASE  = self.registration.scope;
 const SHELL = [BASE, BASE + 'index.html', BASE + 'manifest.json', BASE + 'icon.svg'];
 
@@ -19,7 +19,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = new URL(e.request.url);
 
-  // Network-first for Supabase API calls
+  // Supabase: network-only, silent fallback on failure
   if (url.hostname.includes('supabase.co')) {
     e.respondWith(
       fetch(e.request).catch(() => new Response(JSON.stringify([]), {
@@ -29,14 +29,16 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Cache-first for app shell and static assets
+  // Everything else: network-first, cache as fallback
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
-      if (res.ok && e.request.method === 'GET') {
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-      }
-      return res;
-    }))
+    fetch(e.request)
+      .then(res => {
+        if (res.ok && e.request.method === 'GET') {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
