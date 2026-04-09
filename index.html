@@ -392,6 +392,9 @@
         <select id="opponent-select" required>
           <option value="">Select opponent…</option>
         </select>
+        <div style="margin-top:6px;font-size:.8125rem;color:var(--muted)">
+          Nicht dabei? <a href="#" style="color:var(--green);font-weight:500;text-decoration:none" onclick="event.preventDefault();closeModal();openPlayerModal()">Spieler hinzufügen</a>
+        </div>
       </div>
       <div class="form-group">
         <label for="score-input">Score</label>
@@ -410,6 +413,23 @@
       </div>
       <button type="submit" class="btn btn-clay mt-16" id="match-submit">Save Match</button>
       <button type="button" class="btn btn-secondary mt-8" onclick="closeModal()">Cancel</button>
+    </form>
+  </div>
+</div>
+
+<!-- ══ ADD PLAYER MODAL ═════════════════════════════════ -->
+<div id="player-modal" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h2>Spieler hinzufügen</h2>
+    <div id="player-error" class="error-msg hidden"></div>
+    <form id="player-form">
+      <div class="form-group">
+        <label for="player-name-input">Name</label>
+        <input type="text" id="player-name-input" placeholder="z.B. Roger Federer" autocomplete="off" required autofocus>
+      </div>
+      <button type="submit" class="btn btn-primary mt-16" id="player-submit">Hinzufügen</button>
+      <button type="button" class="btn btn-secondary mt-8" onclick="closePlayerModal()">Abbrechen</button>
     </form>
   </div>
 </div>
@@ -658,9 +678,12 @@ function renderLeaderboard(el) {
   const rankClass = i => i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : '';
 
   el.innerHTML = `
-    <div class="section-header">
-      <h2>Leaderboard</h2>
-      <p>Ranked by win rate (min. 1 match)</p>
+    <div class="section-header" style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+      <div>
+        <h2>Leaderboard</h2>
+        <p>Ranked by win rate (min. 1 match)</p>
+      </div>
+      <button class="btn btn-secondary" style="width:auto;padding:8px 14px;font-size:.8125rem;white-space:nowrap;flex-shrink:0" onclick="openPlayerModal()">+ Spieler</button>
     </div>
     <div class="leaderboard">
       <div class="lb-row lb-header">
@@ -803,6 +826,52 @@ $('match-form').addEventListener('submit', async e => {
   closeModal();
   await loadData();
   renderView(activeView);
+});
+
+// ── Add Player Modal ──────────────────────────────────
+function openPlayerModal() {
+  $('player-name-input').value = '';
+  $('player-submit').disabled = false;
+  $('player-submit').textContent = 'Hinzufügen';
+  hideMsg('player-error');
+  show('player-modal');
+  setTimeout(() => $('player-name-input').focus(), 50);
+}
+
+function closePlayerModal() { hide('player-modal'); }
+
+$('player-modal').addEventListener('click', e => {
+  if (e.target === $('player-modal')) closePlayerModal();
+});
+
+$('player-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = $('player-name-input').value.trim();
+  if (!name) { showError('player-error', 'Bitte einen Namen eingeben.'); return; }
+
+  const btn = $('player-submit');
+  btn.disabled = true; btn.textContent = 'Speichern…';
+  hideMsg('player-error');
+
+  const { data, error } = await sb
+    .from('profiles')
+    .upsert({ username: name, display_name: name }, { onConflict: 'username' })
+    .select('id, display_name')
+    .single();
+
+  btn.disabled = false; btn.textContent = 'Hinzufügen';
+
+  if (error) { showError('player-error', error.message); return; }
+
+  // Refresh local profile list
+  if (!allProfiles.find(p => p.id === data.id)) {
+    allProfiles.push({ id: data.id, display_name: data.display_name });
+    allProfiles.sort((a, b) => a.display_name.localeCompare(b.display_name));
+    saveCache();
+  }
+
+  closePlayerModal();
+  if (activeView === 'leaderboard') renderView('leaderboard');
 });
 
 // ── Service Worker ────────────────────────────────────
