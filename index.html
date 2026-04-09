@@ -139,6 +139,43 @@
       font-size: 1.25rem; font-weight: 600;
     }
     .header-user { font-size: .8125rem; color: rgba(245,239,230,.7); }
+    .header-right { display: flex; align-items: center; gap: 10px; }
+    .notif-btn {
+      position: relative; background: none; border: none;
+      padding: 5px; border-radius: 8px; cursor: pointer;
+      color: rgba(245,239,230,.75); line-height: 0;
+      transition: color .15s;
+    }
+    .notif-btn:hover { color: var(--sand); }
+    .notif-btn.has-unread { color: var(--sand); }
+    .notif-badge {
+      position: absolute; top: 0; right: 0;
+      background: var(--clay); color: #fff;
+      font-size: .5625rem; font-weight: 700;
+      border-radius: 99px; min-width: 15px; height: 15px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 3px; line-height: 1; border: 1.5px solid var(--green);
+    }
+
+    /* ── NOTIFICATION PANEL ─────────────────── */
+    .notif-item {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+    }
+    .notif-item:last-child { border-bottom: none; }
+    .notif-item.unread { background: #F0FDF4; margin: 0 -20px; padding: 12px 20px; }
+    .notif-icon {
+      width: 32px; height: 32px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; font-size: .875rem;
+    }
+    .notif-icon.like    { background: #FEF3C7; }
+    .notif-icon.comment { background: #DBEAFE; }
+    .notif-body { flex: 1; min-width: 0; }
+    .notif-text { font-size: .875rem; color: var(--text); line-height: 1.4; }
+    .notif-text strong { font-weight: 600; }
+    .notif-meta { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+    .notif-empty { text-align: center; padding: 32px 0; color: var(--muted); font-size: .875rem; }
 
     .content { flex: 1; overflow-y: auto; padding: 20px 16px 108px; }
 
@@ -396,7 +433,15 @@
 <div id="app-view" class="hidden">
   <header class="app-header">
     <h1 id="view-title">Dashboard</h1>
-    <span class="header-user" id="header-user"></span>
+    <div class="header-right">
+      <button class="notif-btn" id="notif-btn" onclick="toggleNotifPanel()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>
+        </svg>
+        <span class="notif-badge hidden" id="notif-badge"></span>
+      </button>
+      <span class="header-user" id="header-user"></span>
+    </div>
   </header>
 
   <main class="content" id="content"></main>
@@ -471,6 +516,15 @@
       <button type="submit" class="btn btn-clay mt-16" id="match-submit">Save Match</button>
       <button type="button" class="btn btn-secondary mt-8" onclick="closeModal()">Cancel</button>
     </form>
+  </div>
+</div>
+
+<!-- ══ NOTIFICATION PANEL ═══════════════════════════════ -->
+<div id="notif-panel" class="modal-overlay hidden">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <h2>Benachrichtigungen</h2>
+    <div id="notif-list"></div>
   </div>
 </div>
 
@@ -585,6 +639,8 @@ async function init() {
         show('app-view');
         setActiveNav('dashboard');
         renderView('dashboard');
+        updateNotifBadge();
+        setInterval(pollNotifications, 60000);
         return;
       }
     }
@@ -624,6 +680,8 @@ $('auth-form').addEventListener('submit', async e => {
     show('app-view');
     setActiveNav('dashboard');
     renderView('dashboard');
+    updateNotifBadge();
+    setInterval(pollNotifications, 60000);
   } catch (err) {
     showError('auth-error', err.message || 'Etwas ist schiefgelaufen.');
   } finally {
@@ -1088,6 +1146,135 @@ $('player-form').addEventListener('submit', async e => {
   closePlayerModal();
   if (activeView === 'leaderboard') renderView('leaderboard');
 });
+
+// ── Notifications ─────────────────────────────────────
+function getMyMatchIds() {
+  const ids = new Set(
+    allMatches
+      .filter(m => m.player1_id === currentUser.id || m.player2_id === currentUser.id)
+      .map(m => m.id)
+  );
+  // Also matches where I commented
+  allComments.filter(c => c.player_id === currentUser.id).forEach(c => ids.add(c.match_id));
+  return ids;
+}
+
+function buildNotifications() {
+  const myIds = getMyMatchIds();
+  const notifs = [];
+
+  allLikes
+    .filter(l => l.player_id !== currentUser.id && myIds.has(l.match_id) && l.created_at)
+    .forEach(l => {
+      const match = allMatches.find(m => m.id === l.match_id);
+      const actor = allProfiles.find(p => p.id === l.player_id);
+      if (!match || !actor) return;
+      const p1 = allProfiles.find(p => p.id === match.player1_id)?.display_name || '?';
+      const p2 = allProfiles.find(p => p.id === match.player2_id)?.display_name || '?';
+      notifs.push({ type: 'like', time: l.created_at, actor: actor.display_name, sub: `${p1} vs ${p2}` });
+    });
+
+  allComments
+    .filter(c => c.player_id !== currentUser.id && myIds.has(c.match_id))
+    .forEach(c => {
+      const match = allMatches.find(m => m.id === c.match_id);
+      const actor = allProfiles.find(p => p.id === c.player_id);
+      if (!match || !actor) return;
+      const p1 = allProfiles.find(p => p.id === match.player1_id)?.display_name || '?';
+      const p2 = allProfiles.find(p => p.id === match.player2_id)?.display_name || '?';
+      notifs.push({ type: 'comment', time: c.created_at, actor: actor.display_name,
+        text: c.content.length > 50 ? c.content.slice(0, 50) + '…' : c.content,
+        sub: `${p1} vs ${p2}` });
+    });
+
+  return notifs.sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 50);
+}
+
+function updateNotifBadge() {
+  const lastSeen = localStorage.getItem('mt_last_seen') || '1970-01-01T00:00:00Z';
+  const unread = buildNotifications().filter(n => n.time > lastSeen).length;
+  const badge = $('notif-badge');
+  const btn   = $('notif-btn');
+  if (unread > 0) {
+    badge.textContent = unread > 9 ? '9+' : unread;
+    badge.classList.remove('hidden');
+    btn.classList.add('has-unread');
+  } else {
+    badge.classList.add('hidden');
+    btn.classList.remove('has-unread');
+  }
+}
+
+function relativeTime(isoStr) {
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1)  return 'gerade eben';
+  if (m < 60) return `vor ${m} Min.`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `vor ${h} Std.`;
+  const d = Math.floor(h / 24);
+  return `vor ${d} Tag${d > 1 ? 'en' : ''}`;
+}
+
+function toggleNotifPanel() {
+  const panel = $('notif-panel');
+  if (!panel.classList.contains('hidden')) {
+    hide('notif-panel');
+    return;
+  }
+
+  // Mark all as read
+  localStorage.setItem('mt_last_seen', new Date().toISOString());
+  updateNotifBadge();
+
+  const lastSeen = localStorage.getItem('mt_last_seen');
+  const notifs   = buildNotifications();
+  const list     = $('notif-list');
+
+  if (!notifs.length) {
+    list.innerHTML = '<div class="notif-empty">Keine Benachrichtigungen</div>';
+  } else {
+    list.innerHTML = notifs.map(n => {
+      const isNew = n.time > (localStorage.getItem('mt_last_seen_prev') || '1970-01-01');
+      const icon  = n.type === 'like'
+        ? '<div class="notif-icon like">👍</div>'
+        : '<div class="notif-icon comment">💬</div>';
+      const text  = n.type === 'like'
+        ? `<strong>${escHtml(n.actor)}</strong> hat das Match geliked`
+        : `<strong>${escHtml(n.actor)}</strong>: „${escHtml(n.text)}"`;
+      return `
+        <div class="notif-item">
+          ${icon}
+          <div class="notif-body">
+            <div class="notif-text">${text}</div>
+            <div class="notif-meta">${escHtml(n.sub)} · ${relativeTime(n.time)}</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  show('notif-panel');
+}
+
+$('notif-panel').addEventListener('click', e => {
+  if (e.target === $('notif-panel')) {
+    // Save current time as prev before closing so unread highlighting works next open
+    localStorage.setItem('mt_last_seen_prev', localStorage.getItem('mt_last_seen') || '1970-01-01');
+    hide('notif-panel');
+  }
+});
+
+// Poll for new activity every 60s
+async function pollNotifications() {
+  const [r1, r2] = await Promise.all([
+    sb.from('match_likes').select('*'),
+    sb.from('match_comments').select('*').order('created_at', { ascending: true })
+  ]);
+  if (!r1.error && r1.data) allLikes    = r1.data;
+  if (!r2.error && r2.data) allComments = r2.data;
+  saveCache();
+  updateNotifBadge();
+}
 
 // ── Service Worker ────────────────────────────────────
 if ('serviceWorker' in navigator) {
