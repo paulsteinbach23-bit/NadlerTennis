@@ -111,12 +111,6 @@
     }
     .btn-clay { background: var(--clay); color: var(--white); }
 
-    .auth-toggle {
-      margin-top: 20px; text-align: center;
-      font-size: .875rem; color: var(--muted);
-    }
-    .auth-toggle a { color: var(--green); font-weight: 500; text-decoration: none; cursor: pointer; }
-
     /* ── MESSAGES ────────────────────────────── */
     .error-msg {
       background: #FEE2E2; color: #B91C1C;
@@ -329,28 +323,15 @@
     <p>Tennis results for friends</p>
   </div>
   <div class="auth-card">
-    <h2 id="auth-title">Welcome back</h2>
+    <h2>Wer bist du?</h2>
     <div id="auth-error" class="error-msg hidden"></div>
-    <div id="auth-info"  class="info-msg  hidden"></div>
     <form id="auth-form">
-      <div class="form-group hidden" id="name-field">
-        <label for="display-name">Your name</label>
-        <input type="text" id="display-name" placeholder="e.g. Rafael Nadler" autocomplete="name">
-      </div>
       <div class="form-group">
-        <label for="auth-email">Email</label>
-        <input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email" required>
+        <label for="auth-name">Dein Name</label>
+        <input type="text" id="auth-name" placeholder="z.B. Rafael Nadler" autocomplete="name" required autofocus>
       </div>
-      <div class="form-group">
-        <label for="auth-password">Password</label>
-        <input type="password" id="auth-password" placeholder="••••••••" autocomplete="current-password" required>
-      </div>
-      <button type="submit" class="btn btn-primary" id="auth-submit">Sign in</button>
+      <button type="submit" class="btn btn-primary" id="auth-submit">Weiter</button>
     </form>
-    <div class="auth-toggle">
-      <span id="auth-toggle-label">Don't have an account?</span>
-      <a id="auth-toggle-link"> Sign up</a>
-    </div>
   </div>
 </div>
 
@@ -450,7 +431,6 @@ let allProfiles    = [];
 let allMatches     = [];
 let activeView     = 'dashboard';
 let selectedResult = null;
-let isSignup       = false;
 
 // ── Helpers ───────────────────────────────────────────
 const $   = id => document.getElementById(id);
@@ -491,7 +471,7 @@ function loadCache() {
 // ── Data ──────────────────────────────────────────────
 async function loadData() {
   const [r1, r2] = await Promise.all([
-    sb.from('profiles').select('id, display_name, email').order('display_name'),
+    sb.from('profiles').select('id, display_name').order('display_name'),
     sb.from('matches').select('*').order('played_at', { ascending: false })
   ]);
 
@@ -509,161 +489,70 @@ async function loadData() {
 
 // ── Init ──────────────────────────────────────────────
 async function init() {
-  const { data: { session } } = await sb.auth.getSession();
-  if (session) {
-    currentUser = session.user;
-    await loadUserProfile();
-  } else {
-    hide('loading');
-    show('auth-view');
-  }
-
-  sb.auth.onAuthStateChange(async (event, session) => {
-    if (event === 'SIGNED_OUT') {
-      currentUser = null; currentProfile = null;
-      hide('app-view');
-      resetAuthForm();
-      show('auth-view');
+  try {
+    const stored = localStorage.getItem('mt_user');
+    if (stored) {
+      const user = JSON.parse(stored);
+      if (user?.id && user?.display_name) {
+        currentUser    = user;
+        currentProfile = user;
+        await loadData();
+        hide('loading');
+        $('header-user').textContent = currentProfile.display_name;
+        show('app-view');
+        setActiveNav('dashboard');
+        renderView('dashboard');
+        return;
+      }
     }
-  });
+  } catch (_) {}
+  hide('loading');
+  show('auth-view');
 }
 
-async function loadUserProfile() {
-  const { data, error } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+// ── Auth form (username only) ─────────────────────────
+$('auth-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn  = $('auth-submit');
+  const name = $('auth-name').value.trim();
 
-  if (!error && data) {
-    currentProfile = data;
+  hideMsg('auth-error');
+  if (!name) { showError('auth-error', 'Bitte gib deinen Namen ein.'); return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Laden…';
+
+  try {
+    const { data, error } = await sb
+      .from('profiles')
+      .upsert({ username: name, display_name: name }, { onConflict: 'username' })
+      .select('id, display_name')
+      .single();
+
+    if (error) throw error;
+
+    currentUser    = { id: data.id, display_name: data.display_name };
+    currentProfile = currentUser;
+    localStorage.setItem('mt_user', JSON.stringify(currentUser));
+
     await loadData();
-    hide('loading'); hide('auth-view');
+    hide('auth-view');
     $('header-user').textContent = currentProfile.display_name;
     show('app-view');
     setActiveNav('dashboard');
     renderView('dashboard');
-  } else {
-    hide('loading'); hide('auth-view');
-    showProfileSetup();
-  }
-}
-
-// ── Auth form ─────────────────────────────────────────
-$('auth-form').addEventListener('submit', async e => {
-  e.preventDefault();
-  const btn      = $('auth-submit');
-  const email    = $('auth-email').value.trim();
-  const password = $('auth-password').value;
-  const name     = $('display-name').value.trim();
-
-  hideMsg('auth-error'); hideMsg('auth-info');
-  btn.disabled = true;
-  btn.textContent = isSignup ? 'Creating account…' : 'Signing in…';
-
-  try {
-    if (isSignup) {
-      if (!name) { showError('auth-error', 'Please enter your name.'); return; }
-
-      const { data, error } = await sb.auth.signUp({ email, password });
-      if (error) throw error;
-
-      if (data.user && !data.user.identities?.length === 0) {
-        // Email confirmation may be required
-        showError('auth-info', 'Check your email to confirm your account, then sign in.');
-        // Note: info-msg is green — intentional (not an error)
-        $('auth-info').classList.remove('hidden');
-        $('auth-info').classList.add('info-msg');
-        return;
-      }
-
-      if (data.user) {
-        currentUser = data.user;
-        const { error: pe } = await sb.from('profiles').insert({
-          id: currentUser.id,
-          display_name: name,
-          email
-        });
-        if (pe && pe.code !== '23505') throw pe;
-        await loadUserProfile();
-      }
-
-    } else {
-      const { data, error } = await sb.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      currentUser = data.user;
-      await loadUserProfile();
-    }
   } catch (err) {
-    showError('auth-error', err.message || 'Something went wrong.');
+    showError('auth-error', err.message || 'Etwas ist schiefgelaufen.');
   } finally {
     btn.disabled = false;
-    btn.textContent = isSignup ? 'Sign up' : 'Sign in';
+    btn.textContent = 'Weiter';
   }
 });
-
-$('auth-toggle-link').addEventListener('click', () => {
-  isSignup = !isSignup;
-  $('auth-title').textContent        = isSignup ? 'Create account' : 'Welcome back';
-  $('auth-submit').textContent       = isSignup ? 'Sign up'        : 'Sign in';
-  $('auth-toggle-label').textContent = isSignup ? 'Already have an account?' : "Don't have an account?";
-  $('auth-toggle-link').textContent  = isSignup ? ' Sign in'       : ' Sign up';
-  $('name-field').classList.toggle('hidden', !isSignup);
-  $('auth-password').autocomplete = isSignup ? 'new-password' : 'current-password';
-  hideMsg('auth-error'); hideMsg('auth-info');
-});
-
-function resetAuthForm() {
-  isSignup = false;
-  $('auth-title').textContent        = 'Welcome back';
-  $('auth-submit').textContent       = 'Sign in';
-  $('auth-toggle-label').textContent = "Don't have an account?";
-  $('auth-toggle-link').textContent  = ' Sign up';
-  $('name-field').classList.add('hidden');
-  $('auth-form').reset();
-  hideMsg('auth-error'); hideMsg('auth-info');
-}
-
-// ── Profile setup ─────────────────────────────────────
-function showProfileSetup() {
-  $('auth-view').innerHTML = `
-    <div class="auth-logo">
-      <h1>Match Tracker</h1>
-      <p>One last step</p>
-    </div>
-    <div class="auth-card">
-      <h2>What's your name?</h2>
-      <div id="setup-error" class="error-msg hidden"></div>
-      <div class="form-group">
-        <label for="setup-name">Display name</label>
-        <input type="text" id="setup-name" placeholder="e.g. Rafael Nadler" autofocus autocomplete="name">
-      </div>
-      <button class="btn btn-primary" id="setup-btn" onclick="saveProfile()">Continue</button>
-    </div>
-  `;
-  show('auth-view');
-}
-
-async function saveProfile() {
-  const name = $('setup-name').value.trim();
-  if (!name) { showError('setup-error', 'Please enter a display name.'); return; }
-
-  const btn = $('setup-btn');
-  btn.disabled = true; btn.textContent = 'Saving…';
-
-  const { error } = await sb.from('profiles').insert({
-    id: currentUser.id,
-    display_name: name,
-    email: currentUser.email
-  });
-
-  if (error) {
-    showError('setup-error', error.message);
-    btn.disabled = false; btn.textContent = 'Continue';
-    return;
-  }
-  await loadUserProfile();
-}
 
 // ── Sign out ──────────────────────────────────────────
-$('signout-btn').addEventListener('click', async () => {
-  await sb.auth.signOut();
+$('signout-btn').addEventListener('click', () => {
+  localStorage.removeItem('mt_user');
+  location.reload();
 });
 
 // ── Navigation ────────────────────────────────────────
